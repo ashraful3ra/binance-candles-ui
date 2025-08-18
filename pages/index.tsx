@@ -10,14 +10,23 @@ interface SymbolInfo { symbol:string; baseAsset:string; quoteAsset:string; statu
 interface Ticker24h { lastPrice:number; priceChangePercent:number; highPrice:number; lowPrice:number; volume:number; quoteVolume:number; }
 
 const INTERVALS = ['1m','5m','15m','30m','1h'] as const;
-const RANGES = ['1h','4h','1d'] as const;
-const RANGE_MS: Record<typeof RANGES[number], number> = { '1h': 3600000, '4h': 14400000, '1d': 86400000 };
+
+// ✅ New ranges added
+const RANGES = ['1h','4h','1d','7d','15d','30d'] as const;
+const RANGE_MS: Record<typeof RANGES[number], number> = {
+  '1h': 3600000,
+  '4h': 14400000,
+  '1d': 86400000,
+  '7d': 7*86400000,
+  '15d': 15*86400000,
+  '30d': 30*86400000,
+};
 
 const CANDLES_FOR_RANGE = (interval: string, range: typeof RANGES[number]) => {
   const map: Record<string, number> = { '1m': 60, '5m': 12, '15m': 4, '30m': 2, '1h': 1 };
   const perHour = map[interval] ?? 60;
   const hours = RANGE_MS[range] / 3600000;
-  return Math.min(1000, perHour * hours);
+  return Math.min(1000, perHour * hours); // Binance limit
 };
 
 export default function HomePage() {
