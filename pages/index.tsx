@@ -170,7 +170,43 @@ export default function HomePage() {
 
   return (
     <>
-      <Head><title>{symbol} • Binance Candles</title><meta name="viewport" content="width=device-width, initial-scale=1" /></Head>
+      <Head>
+        <title>{symbol} • Binance Candles</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+        {/* Basic SEO */}
+        <meta
+          name="description"
+          content={`Realtime Binance OHLCV candlestick data viewer for ${symbol}. Interval: ${interval}, Range: ${range}.`}
+        />
+        <meta
+          name="keywords"
+          content="Binance, crypto, candlestick, websocket, OHLCV, trading, ETH, BTC, USDT"
+        />
+        <meta name="author" content="Ashraful Islam" />
+
+        {/* Open Graph for social share */}
+        <meta property="og:title" content={`${symbol} • Binance Candles`} />
+        <meta
+          property="og:description"
+          content={`Realtime crypto candlestick data from Binance API. View ${symbol} charts in ${interval} intervals for last ${range}.`}
+        />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://candles.omlol.com/" />
+        <meta property="og:image" content="https://candles.omlol.com/preview.png" />
+
+        {/* Twitter Card */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={`${symbol} • Binance Candles`} />
+        <meta
+          name="twitter:description"
+          content={`Realtime crypto data powered by Binance WebSocket.`}
+        />
+        <meta name="twitter:image" content="https://candles.omlol.com/preview.png" />
+
+        {/* Theme color */}
+        <meta name="theme-color" content="#F0B90B" />
+      </Head>
       <div className="app">
         <header className="topbar">
           <div className="brand"><span className="logo-dot" /> Binance Candles</div>
