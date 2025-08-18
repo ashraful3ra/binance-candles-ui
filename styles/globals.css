@@ -1,0 +1,17 @@
+:root {
+  --bg: #0B0E11;
+  --panel: #0E1116;
+  --border: #1F2329;
+  --text: #EAECEF;
+  --muted: #B7BDC6;
+  --accent: #F0B90B;
+  --accent-2: #F8D33A;
+  --up: #0ECB81;
+  --down: #F6465D;
+}
+
+html, body, #__next {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
