@@ -1,5 +1,5 @@
 // pages/index.tsx
-// Binance-themed WebSocket Candle Viewer with aligned table + exact CSV
+// Binance Futures (USDT-M) WebSocket Candle Viewer with aligned table + exact CSV
 import Head from 'next/head';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -11,7 +11,7 @@ interface Ticker24h { lastPrice:number; priceChangePercent:number; highPrice:num
 
 const INTERVALS = ['1m','5m','15m','30m','1h'] as const;
 
-// ✅ New ranges added
+// ✅ Ranges
 const RANGES = ['1h','4h','1d','7d','15d','30d'] as const;
 const RANGE_MS: Record<typeof RANGES[number], number> = {
   '1h': 3600000,
@@ -26,7 +26,15 @@ const CANDLES_FOR_RANGE = (interval: string, range: typeof RANGES[number]) => {
   const map: Record<string, number> = { '1m': 60, '5m': 12, '15m': 4, '30m': 2, '1h': 1 };
   const perHour = map[interval] ?? 60;
   const hours = RANGE_MS[range] / 3600000;
-  return Math.min(1000, perHour * hours); // Binance limit
+  return Math.min(1000, perHour * hours); // safe limit
+};
+
+// --- Futures (USDT-M) endpoints ---
+const ENDPOINTS = {
+  exchangeInfo: 'https://fapi.binance.com/fapi/v1/exchangeInfo',
+  klines:       'https://fapi.binance.com/fapi/v1/klines',
+  ticker24h:    'https://fapi.binance.com/fapi/v1/ticker/24hr',
+  ws:           'wss://fstream.binance.com/ws',
 };
 
 export default function HomePage() {
@@ -57,26 +65,28 @@ export default function HomePage() {
     });
   };
 
-  // symbols
+  // symbols (Futures PERPETUAL)
   useEffect(() => {
     let off = false;
     (async () => {
       try {
-        const res = await fetch('https://api.binance.com/api/v3/exchangeInfo');
+        const res = await fetch(ENDPOINTS.exchangeInfo);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (off) return;
         const list: SymbolInfo[] = (data?.symbols || [])
-          .filter((s:any)=>s?.status==='TRADING')
+          .filter((s:any)=> s?.status === 'TRADING' && s?.contractType === 'PERPETUAL')
           .map((s:any)=>({ symbol:s.symbol, baseAsset:s.baseAsset, quoteAsset:s.quoteAsset, status:s.status }));
         setSymbols(list);
-      } catch {}
+      } catch (e:any) { console.error(e); }
     })();
     return () => { off = true; };
   }, []);
 
   const filteredSymbols = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = symbols.filter(s => (onlyUsdt ? s.quoteAsset==='USDT' : true));
+    let list = symbols;
+    if (onlyUsdt) list = list.filter(s => s.quoteAsset === 'USDT'); // USDT-M only
     if (q) list = list.filter(s => s.symbol.toLowerCase().includes(q) || s.baseAsset.toLowerCase().includes(q));
     return list.slice(0, 1200);
   }, [symbols, search, onlyUsdt]);
@@ -88,13 +98,14 @@ export default function HomePage() {
       const now = Date.now();
       const startTime = now - RANGE_MS[rng];
       const limit = CANDLES_FOR_RANGE(intv, rng);
-      const url = new URL('https://api.binance.com/api/v3/klines');
+      const url = new URL(ENDPOINTS.klines);
       url.searchParams.set('symbol', sym);
       url.searchParams.set('interval', intv);
       url.searchParams.set('startTime', String(startTime));
       url.searchParams.set('endTime', String(now));
       url.searchParams.set('limit', String(limit));
       const res = await fetch(url.toString());
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error('Unexpected response');
       const mapped: KlineRow[] = data.map((k:any[])=>({ time:k[0], open:+k[1], high:+k[2], low:+k[3], close:+k[4], volume:+k[5] }));
@@ -105,15 +116,23 @@ export default function HomePage() {
 
   const loadTicker = async (sym: string) => {
     try {
-      const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${sym}`);
+      const res = await fetch(`${ENDPOINTS.ticker24h}?symbol=${sym}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json();
-      setTicker({ lastPrice:+d.lastPrice, priceChangePercent:+d.priceChangePercent, highPrice:+d.highPrice, lowPrice:+d.lowPrice, volume:+d.volume, quoteVolume:+d.quoteVolume });
+      setTicker({
+        lastPrice:+d.lastPrice,
+        priceChangePercent:+d.priceChangePercent,
+        highPrice:+d.highPrice,
+        lowPrice:+d.lowPrice,
+        volume:+d.volume,
+        quoteVolume:+d.quoteVolume
+      });
     } catch { setTicker(null); }
   };
 
   const connectWs = (sym: string, intv: string) => {
     if (wsRef.current) { try { wsRef.current.close(); } catch {} wsRef.current = null; }
-    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${sym.toLowerCase()}@kline_${intv}`);
+    const ws = new WebSocket(`${ENDPOINTS.ws}/${sym.toLowerCase()}@kline_${intv}`);
     wsRef.current = ws; setWsStatus('connecting');
     ws.onopen = () => setWsStatus('connected');
     ws.onmessage = (ev) => {
@@ -161,7 +180,7 @@ export default function HomePage() {
     const blob = new Blob([lines], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `${symbol}_${interval}_${range}.csv`; a.click();
+    a.href = url; a.download = `${symbol}_${interval}_${range}_futures.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -171,25 +190,25 @@ export default function HomePage() {
   return (
     <>
       <Head>
-        <title>{symbol} • Binance Candles</title>
+        <title>{symbol} • Binance Futures Candles</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
 
         {/* Basic SEO */}
         <meta
           name="description"
-          content={`Realtime Binance OHLCV candlestick data viewer for ${symbol}. Interval: ${interval}, Range: ${range}.`}
+          content={`Realtime Binance USDT-M Futures OHLCV viewer for ${symbol}. Interval: ${interval}, Range: ${range}.`}
         />
         <meta
           name="keywords"
-          content="Binance, crypto, candlestick, websocket, OHLCV, trading, ETH, BTC, USDT"
+          content="Binance Futures, USDT-M, crypto, candlestick, websocket, OHLCV, trading, ETH, BTC, SOL"
         />
         <meta name="author" content="Ashraful Islam" />
 
         {/* Open Graph for social share */}
-        <meta property="og:title" content={`${symbol} • Binance Candles`} />
+        <meta property="og:title" content={`${symbol} • Binance Futures Candles`} />
         <meta
           property="og:description"
-          content={`Realtime crypto candlestick data from Binance API. View ${symbol} charts in ${interval} intervals for last ${range}.`}
+          content={`Realtime crypto candlestick data from Binance Futures. View ${symbol} in ${interval} interval for last ${range}.`}
         />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://candles.omlol.com/" />
@@ -197,10 +216,10 @@ export default function HomePage() {
 
         {/* Twitter Card */}
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={`${symbol} • Binance Candles`} />
+        <meta name="twitter:title" content={`${symbol} • Binance Futures Candles`} />
         <meta
           name="twitter:description"
-          content={`Realtime crypto data powered by Binance WebSocket.`}
+          content={`Realtime crypto data powered by Binance Futures WebSocket.`}
         />
         <meta name="twitter:image" content="https://candles.omlol.com/preview.png" />
 
@@ -209,7 +228,7 @@ export default function HomePage() {
       </Head>
       <div className="app">
         <header className="topbar">
-          <div className="brand"><span className="logo-dot" /> Binance Candles</div>
+          <div className="brand"><span className="logo-dot" /> Binance Futures Candles</div>
           <div className="status"><span className={`badge ${wsStatus}`}>{wsStatus}</span></div>
         </header>
 
@@ -290,7 +309,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <footer className="foot">Data: Binance Public API • Realtime via WebSocket</footer>
+        <footer className="foot">Data: Binance USDT-M Futures • Realtime via WebSocket</footer>
       </div>
 
       <style jsx>{`
@@ -313,16 +332,16 @@ export default function HomePage() {
         .row{display:flex; gap:12px; align-items:end; flex-wrap:wrap;}
         .control{display:flex; flex-direction:column; gap:6px; min-width:160px}
         .control label{font-size:12px; color:var(--muted)}
-        .control input,.control select{background:#131A21; color:var(--text); border:1px solid #242A31; padding:10px 12px; border-radius:10px; outline:none}
+        .control input,.control select{background:#131A21; color:#fff; border:1px solid #242A31; padding:10px 12px; border-radius:10px; outline:none}
         .control input:focus,.control select:focus{border-color:var(--accent)}
         .control.chk .inline{display:flex; align-items:center; gap:8px}
         .seg{display:flex; gap:8px; flex-wrap:wrap}
-        .segbtn{background:#131A21; border:1px solid #242A31; border-radius:10px; padding:8px 10px; color:var(--text); cursor:pointer}
+        .segbtn{background:#131A21; border:1px solid #242A31; border-radius:10px; padding:8px 10px; color:#fff; cursor:pointer}
         .segbtn.active{border-color:var(--accent); background:#1A2430}
         .spacer{flex:1}
         .actions{display:flex; gap:8px}
         .btn{background:linear-gradient(180deg,var(--accent),#D09D09); color:#1E2329; font-weight:800; border:none; border-radius:10px; padding:10px 12px; cursor:pointer}
-        .btn.ghost{background:#131A21; color:var(--text); border:1px solid #242A31}
+        .btn.ghost{background:#131A21; color:#fff; border:1px solid #242A31}
         .btn:hover{filter:brightness(1.05)}
 
         .ticker{display:grid; grid-template-columns:repeat(5, 1fr); gap:10px; margin-bottom:12px}
